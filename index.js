@@ -1,14 +1,19 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+import { MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
+
+
+dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
+
 // middleware
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@atlascluster.edwy44d.mongodb.net/?retryWrites=true&w=majority&appName=AtlasCluster`;
+const uri = process.env.MONGODB_URI;
 
 // MongoDB client setup
 const client = new MongoClient(uri, {
@@ -22,10 +27,10 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     await client.connect();
-    const userCollection = client.db('bistroBoss').collection('users');
-    const menuCollection = client.db('bistroBoss').collection('menu');
-    const reviewCollection = client.db('bistroBoss').collection('reviews');
-    const cartCollection = client.db('bistroBoss').collection('carts');
+    const userCollection = client.db('BistroDB').collection('users');
+    const menuCollection = client.db('BistroDB').collection('menu');
+    const reviewCollection = client.db('BistroDB').collection('reviews');
+    const cartCollection = client.db('BistroDB').collection('carts');
 
     app.get('/menu', async (req, res) => {
         const result = await menuCollection.find().toArray();
@@ -72,15 +77,29 @@ async function run() {
 
     // Cart collection APIs
     app.get('/carts', async (req, res) => {
-      const email = req.query.email;
-      const query = { email: email };
-      const result = await cartCollection.find(query).toArray();
-      res.send(result);
+      try {
+        const email = req.query.email;
+        console.log('Querying carts for email:', email); // Log the email being queried
+        const query = { email: email };
+        const result = await cartCollection.find(query).toArray();
+        console.log('Query result:', result); // Log the query result
+        res.send(result);
+      } catch (error) {
+        console.error('Error fetching carts:', error);
+        res.status(500).send('Error fetching carts');
+      }
     });
     app.post('/carts', async (req, res) => {
-      const cartItem = req.body;
-      const result = await cartCollection.insertOne(cartItem);
-      res.send(result);
+      try {
+        const cartItem = req.body;
+        console.log('Inserting cart item:', cartItem); // Log the item being inserted
+        const result = await cartCollection.insertOne(cartItem);
+        console.log('Insert result:', result); // Log the insert result
+        res.send(result);
+      } catch (error) {
+        console.error('Error inserting cart item:', error);
+        res.status(500).send('Error inserting cart item');
+      }
     });
 
     app.delete('/carts/:id', async (req, res) => {

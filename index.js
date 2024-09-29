@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import { MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
 
-
 dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,13 +23,56 @@ const client = new MongoClient(uri, {
   }
 });
 
-async function run() {
+const JWT_SECRET = process.env.ACCESS_TOKEN_SECRET;
+// console.log('JWT Secret:', JWT_SECRET);
+
+// Middleware to verify JWT
+const verifyToken = (req, res, next) => {
+  if (!JWT_SECRET) {
+    return res.status(500).send('JWT_SECRET is not set');
+  }
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  console.log('Received Token:', token);
+  if (!token) {
+    console.error('No token provided');
+    return res.status(403).send('A token is required for authentication');
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Decoded Token:', decoded);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.error('Token verification failed:', err);
+    return res.status(401).send('Invalid Token');
+  }
+};
+
+async function run() {    
   try {
     await client.connect();
     const userCollection = client.db('BistroDB').collection('users');
     const menuCollection = client.db('BistroDB').collection('menu');
     const reviewCollection = client.db('BistroDB').collection('reviews');
     const cartCollection = client.db('BistroDB').collection('carts');
+
+    app.post('/jwt', async (req, res) => {
+        const { email } = req.body;
+        let user = await userCollection.findOne({ email });
+        if (!user) {
+            // If user doesn't exist, create a new user
+            const result = await userCollection.insertOne({ email });
+            user = { _id: result.insertedId, email };
+        }
+        const token = jwt.sign({ userId: user._id.toString(), email: user.email }, JWT_SECRET, { expiresIn: '1h' });
+        res.json({ token });
+    });
+
+    // Protected route example
+    app.get('/protected', verifyToken, (req, res) => {
+      res.json({ message: 'Access granted to protected route', user: req.user });
+    });
 
     app.get('/menu', async (req, res) => {
         const result = await menuCollection.find().toArray();
@@ -42,9 +84,41 @@ async function run() {
         res.send(result);
     });
 
-   
+
+    //use verify admin after  verify token
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.user.email;
+      
+      // Additional admin verification logic can be added here
+      // For example, checking if the user with this email has admin role in the database
+      const  query = {email: email}
+      const user = await userCollection.findOne(query);
+      const  isAdmin = user?.role === 'admin';
+      if (!isAdmin) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      
+      next();
+    }
+
+  app.get('/users/admin/:email', verifyToken, async (req, res) => {
+    const email = req.params.email;
+    if (email !== req.user.email) {
+      return res.status(403).send({ message: "forbidden access" })
+    }
+    const query = { email: email };
+    const user = await userCollection.findOne(query);
+    let admin = false;
+    if (user) {
+     admin = user?.role === 'admin';
+    } else {
+      res.status(404).send({ message: 'User not found' });
+    }
+    res.send({admin});
+  });
     // User-related API
-      app.get('/users', async (req, res) => {
+    app.get('/users',verifyToken,verifyAdmin, async (req, res) => {
+       console.log(req.headers);
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -60,7 +134,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch('/users/admin/:id', async (req, res) => {
+    app.patch('/users/admin/:id',verifyToken,verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updateDoc = { $set: { role: 'admin' } };
@@ -68,7 +142,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/users/:id', async (req, res) => {
+    app.delete('/users/:id',verifyToken,verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
@@ -79,22 +153,23 @@ async function run() {
     app.get('/carts', async (req, res) => {
       try {
         const email = req.query.email;
-        console.log('Querying carts for email:', email); // Log the email being queried
+        // console.log('Querying carts for email:', email); // Log the email being queried
         const query = { email: email };
         const result = await cartCollection.find(query).toArray();
-        console.log('Query result:', result); // Log the query result
+        // console.log('Query result:', result); // Log the query result
         res.send(result);
       } catch (error) {
         console.error('Error fetching carts:', error);
         res.status(500).send('Error fetching carts');
       }
     });
+
     app.post('/carts', async (req, res) => {
       try {
         const cartItem = req.body;
-        console.log('Inserting cart item:', cartItem); // Log the item being inserted
+        // console.log('Inserting cart item:', cartItem); // Log the item being inserted
         const result = await cartCollection.insertOne(cartItem);
-        console.log('Insert result:', result); // Log the insert result
+        // console.log('Insert result:', result); // Log the insert result
         res.send(result);
       } catch (error) {
         console.error('Error inserting cart item:', error);
@@ -112,11 +187,12 @@ async function run() {
     // MongoDB Ping for Connection Confirmation
     await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
-  } finally {
-    // Ensure the client will close when you finish/error
-    // await client.close();
+
+  } catch (error) {
+    console.error("Error connecting to MongoDB:", error);
   }
 }
+
 run().catch(console.dir);
 
 // Root route

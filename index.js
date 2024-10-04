@@ -41,7 +41,7 @@ const verifyToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log('Decoded Token:', decoded);
-    req.user = decoded;
+    req.user = decoded;  // Change this line
     next();
   } catch (err) {
     console.error('Token verification failed:', err);
@@ -70,7 +70,7 @@ async function run() {
     });
 
     // Protected route example
-    app.get('/protected', verifyToken, (req, res) => {
+    app.get('/protected', (req, res) => {
       res.json({ message: 'Access granted to protected route', user: req.user });
     });
 
@@ -85,9 +85,9 @@ async function run() {
     });
 
 
-    //use verify admin after  verify token
+    //use verify admin after verify token
     const verifyAdmin = async (req, res, next) => {
-      const email = req.decoded.email;
+      const email = req.user.email;  // Change this line
       const user = await userCollection.findOne({ email: email });
       if (user?.role !== 'admin') {
         return res.status(403).send({ error: true, message: 'forbidden access' });
@@ -95,7 +95,7 @@ async function run() {
       next();
     }
 
-    app.get('/users/admin/:email', verifyToken, async (req, res) => {
+    app.get('/users/admin/:email',  async (req, res) => {
       const email = req.params.email;
       if (email !== req.user.email) {
         return res.status(403).send({ message: "forbidden access" })
@@ -128,7 +128,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch('/users/admin/:id',verifyToken, async (req, res) => {
+    app.patch('/users/admin/:id', async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updateDoc = { $set: { role: 'admin' } };
@@ -136,7 +136,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/users/:id',verifyToken,verifyAdmin, async (req, res) => {
+    app.delete('/users/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);

@@ -41,7 +41,7 @@ const verifyToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log('Decoded Token:', decoded);
-    req.user = decoded;
+    req.user = decoded;  // Change this line
     next();
   } catch (err) {
     console.error('Token verification failed:', err);
@@ -70,7 +70,7 @@ async function run() {
     });
 
     // Protected route example
-    app.get('/protected', verifyToken, (req, res) => {
+    app.get('/protected', (req, res) => {
       res.json({ message: 'Access granted to protected route', user: req.user });
     });
 
@@ -85,39 +85,33 @@ async function run() {
     });
 
 
-    //use verify admin after  verify token
+    //use verify admin after verify token
     const verifyAdmin = async (req, res, next) => {
-      const email = req.user.email;
-      
-      // Additional admin verification logic can be added here
-      // For example, checking if the user with this email has admin role in the database
-      const  query = {email: email}
-      const user = await userCollection.findOne(query);
-      const  isAdmin = user?.role === 'admin';
-      if (!isAdmin) {
-        return res.status(403).send({ message: "Forbidden access" });
+      const email = req.user.email;  // Change this line
+      const user = await userCollection.findOne({ email: email });
+      if (user?.role !== 'admin') {
+        return res.status(403).send({ error: true, message: 'forbidden access' });
       }
-      
       next();
     }
 
-  app.get('/users/admin/:email', verifyToken, async (req, res) => {
-    const email = req.params.email;
-    if (email !== req.user.email) {
-      return res.status(403).send({ message: "forbidden access" })
-    }
-    const query = { email: email };
-    const user = await userCollection.findOne(query);
-    let admin = false;
-    if (user) {
-     admin = user?.role === 'admin';
-    } else {
-      res.status(404).send({ message: 'User not found' });
-    }
-    res.send({admin});
-  });
+    app.get('/users/admin/:email',  async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.user.email) {
+        return res.status(403).send({ message: "forbidden access" })
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if (user) {
+       admin = user?.role === 'admin';
+      } else {
+        res.status(404).send({ message: 'User not found' });
+      }
+      res.send({admin});
+    });
     // User-related API
-    app.get('/users',verifyToken,verifyAdmin, async (req, res) => {
+    app.get('/users', async (req, res) => {
        console.log(req.headers);
       const result = await userCollection.find().toArray();
       res.send(result);
@@ -134,7 +128,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch('/users/admin/:id',verifyToken,verifyAdmin, async (req, res) => {
+    app.patch('/users/admin/:id', async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updateDoc = { $set: { role: 'admin' } };
@@ -142,7 +136,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/users/:id',verifyToken,verifyAdmin, async (req, res) => {
+    app.delete('/users/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
